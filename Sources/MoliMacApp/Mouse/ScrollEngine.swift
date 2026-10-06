@@ -246,12 +246,19 @@ final class ScrollEngine {
 
 /// Posts scroll deltas as events. With trackpad simulation the events carry the
 /// phases of a two-finger scroll: began, changed, ended, then momentum.
+///
+/// Runs on the event tap thread. A scroll view that has seen a gesture begin stays
+/// rubber-banded until it sees the gesture end, so a gesture whose updates stop
+/// without `end` is ended by a watchdog.
 final class ScrollOutput {
     private enum State {
         case idle
         case gesture
         case momentum
     }
+
+    /// How long a gesture may go without an update before the watchdog ends it.
+    private static let stallTimeout = 0.5
 
     var simulatesTrackpad = true
     /// Posts with phases even when trackpad simulation is off (for drag scrolling).
@@ -261,6 +268,13 @@ final class ScrollOutput {
     private var state = State.idle
     private var x = SubpixelAccumulator()
     private var y = SubpixelAccumulator()
+    private var watchdog: CFRunLoopTimer?
+
+    deinit {
+        if let watchdog {
+            CFRunLoopTimerInvalidate(watchdog)
+        }
+    }
 
     func scroll(dx: Double, dy: Double, phase: ScrollAnimator.Phase) {
         let ix = x.take(dx)
@@ -272,6 +286,7 @@ final class ScrollOutput {
             }
             return
         }
+        armWatchdog()
         switch (state, phase) {
         case (.idle, .gesture), (.momentum, .gesture):
             if state == .momentum {
@@ -308,6 +323,30 @@ final class ScrollOutput {
         state = .idle
         x.reset()
         y.reset()
+        if let watchdog {
+            CFRunLoopTimerInvalidate(watchdog)
+        }
+        watchdog = nil
+    }
+
+    private func armWatchdog() {
+        let fireDate = CFAbsoluteTimeGetCurrent() + Self.stallTimeout
+        if let watchdog {
+            CFRunLoopTimerSetNextFireDate(watchdog, fireDate)
+            return
+        }
+        // Repeating with a long interval so a fired timer can be re-armed; `end` removes it.
+        let timer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault, fireDate, 3600, 0, 0) { [weak self] _ in
+            self?.stalled()
+        }
+        CFRunLoopAddTimer(CFRunLoopGetCurrent(), timer, .commonModes)
+        watchdog = timer
+    }
+
+    private func stalled() {
+        guard state != .idle else { return }
+        Log.scroll.info("scroll gesture stalled; ending it")
+        end()
     }
 }
 
