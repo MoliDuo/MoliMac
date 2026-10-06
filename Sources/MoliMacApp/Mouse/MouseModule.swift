@@ -17,7 +17,7 @@ final class MouseModule {
 
     init() {
         thread.startAndWait()
-        engine = MouseEngine(thread: thread)
+        engine = MouseEngine(thread: thread, clock: FrameClock(thread: thread))
     }
 
     func start() {
@@ -42,7 +42,7 @@ final class MouseModule {
         let engine = engine
         let done = DispatchSemaphore(value: 0)
         thread.perform {
-            engine.configure(table: RemapTable([]), active: false)
+            engine.configure(MouseEngine.Configuration())
             done.signal()
         }
         // Wait briefly so the tap is gone before the process exits.
@@ -64,11 +64,15 @@ final class MouseModule {
     }
 
     private func apply() {
-        let table = RemapTable(settings.buttons)
-        let active = settings.enabled && isTrusted && isAwake
+        let configuration = MouseEngine.Configuration(
+            table: RemapTable(settings.buttons),
+            scroll: settings.scroll,
+            screenHeight: Double(NSScreen.main?.frame.height ?? 1000),
+            active: settings.enabled && isTrusted && isAwake
+        )
         let engine = engine
         thread.perform {
-            engine.configure(table: table, active: active)
+            engine.configure(configuration)
         }
     }
 }

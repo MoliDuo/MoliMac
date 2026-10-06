@@ -29,6 +29,13 @@ MoliMac 是一个菜单栏应用（`LSUIElement`），所有模块都在同一�
 - **按键页的捕获区**：指针停在捕获区上时，钩子放行所有事件，这样已经绑定的按键也能被设置页收到。
 - **系统快捷键**：读出用户绑定的按键再发出去。快捷键被关掉或没有按键时，先把它绑到一个键盘打不出来的键码（编号 + 400），再发这个键码；只在本次登录有效，不改用户保存的快捷键设置。
 
+## 平滑滚动
+
+- 只处理鼠标滚轮：带 `IsContinuous` 或带 phase 的事件（触控板、妙控鼠标）和数位板事件原样放行。
+- 每一格交给 Core 的 `ScrollPlanner`：按滚轮转速算距离（`ScrollAcceleration`），按住的修饰键或按住的鼠标按键决定模式（横向、缩放、快速、精确），用到的修饰键从发出的事件里去掉。
+- `ScrollAnimator` 用 `HybridCurve` 把距离铺到各帧上，帧由 `FrameClock`（`CADisplayLink`，加在事件钩子线程的 run loop 上）驱动；空闲时暂停。
+- 模拟触控板时，动画的前段发成 began/changed/ended 的双指滚动，后段的阻力尾巴发成 momentum，并配上类型 29 的手势事件。
+
 ## 设置
 
 - 存在 `~/Library/Application Support/MoliMac/settings.json`，带 `schemaVersion`（规范 009）。

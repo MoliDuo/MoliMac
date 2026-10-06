@@ -12,7 +12,7 @@ enum SyntheticEvents {
         event.getIntegerValueField(.eventSourceUserData) == marker
     }
 
-    private static func mark(_ event: CGEvent) {
+    static func mark(_ event: CGEvent) {
         event.setIntegerValueField(.eventSourceUserData, value: marker)
     }
 
@@ -98,5 +98,22 @@ enum SyntheticEvents {
             }
         }
         return flags
+    }
+
+    static func modifiers(in flags: CGEventFlags) -> Set<ModifierKey> {
+        var modifiers: Set<ModifierKey> = []
+        if flags.contains(.maskControl) {
+            modifiers.insert(.control)
+        }
+        if flags.contains(.maskAlternate) {
+            modifiers.insert(.option)
+        }
+        if flags.contains(.maskShift) {
+            modifiers.insert(.shift)
+        }
+        if flags.contains(.maskCommand) {
+            modifiers.insert(.command)
+        }
+        return modifiers
     }
 }
