@@ -1,0 +1,3 @@
+# Sparkle Ed25519 public key shared by every MoliDuo Mac app (MoliSpec 007, 7.5.3).
+# The private key is the org secret SPARKLE_PRIVATE_KEY. Do not change this line.
+ko0IedgF7YYcB1vkH6XO+7DQw9KjypwXSfC48KaumyQ=

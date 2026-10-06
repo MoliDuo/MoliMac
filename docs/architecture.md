@@ -1,0 +1,56 @@
+# MoliMac 架构
+
+## 一个进程
+
+MoliMac 是一个菜单栏应用（`LSUIElement`），所有模块都在同一个进程里。Mac Mouse Fix 用「主程序 + 后台助手」两个进程，我们不这样做：
+- 退出 MoliMac 就是全部停用，不会留下一个还在拦截鼠标的后台进程。
+- 开机启动用 `SMAppService.mainApp`，应用自己就是登录项。
+- 单实例：`Application Support/MoliMac/instance.lock` 的文件锁。第二次打开只会让已经在运行的那个显示设置窗口，然后退出，保证事件钩子永远只有一套。
+
+## 模块划分
+
+| 目标 | 内容 | 为什么分开 |
+|---|---|---|
+| `MoliMacCore` | 设置模型和读写、按键手势状态机（`ClickCycle`）、按键映射表、滚动曲线和加速、各 App 的前进后退方式 | 不依赖 AppKit，也不读时钟：计时器由调用方启动，到时把令牌传回来。所以每一种时序都能写成单元测试 |
+| `MoliMacApp` | 外壳（菜单栏、单实例、登录项、更新、权限）、事件钩子、模拟事件、设置窗口 | 放在库里，测试可以引用，不会有两个 main |
+| `MoliMac` | 只有 `main.swift` | |
+
+## 事件流（鼠标模块）
+
+```
+鼠标 → CGEventTap（.cghidEventTap，专用线程）→ ClickCycle / 滚动动画 → 动作或模拟事件 → .cgSessionEventTap
+```
+
+- **专用线程**：事件钩子的回调慢了会被系统停掉，所以钩子、计时器、滚动动画都放在 `EventTapThread` 上，从不等主线程。
+- **自己发的事件**在 `eventSourceUserData` 里带标记，钩子见到就放行，避免自己处理自己。
+- **左右键永远不改**：设置写错了也不会把用户锁在外面。没有绑定动作的按键原样放行。
+- **权限**：辅助功能权限每秒检查一次。被撤销时系统不再给钩子送事件，必须立刻移除钩子，否则鼠标会卡住。睡眠唤醒后重建钩子。
+
+## 设置
+
+- 存在 `~/Library/Application Support/MoliMac/settings.json`，带 `schemaVersion`（规范 009）。
+- 字段只加不删。读的时候缺的字段用默认值；写的时候保留文件里这个版本不认识的字段。
+- 文件读不了就用默认设置运行并提示，**不覆盖原文件**；用户选「恢复默认」时才把它改名保留，再写新的。
+- 窗口位置、侧栏选中项这类本机状态放在 UserDefaults。
+
+## 更新和签名
+
+- Sparkle 2，版本固定 2.10.0：更新器的逻辑不能随依赖升级悄悄改变。单一更新渠道。
+- 更新源是 `releases/latest/download/appcast.xml`，里面每个条目指向具体版本的标签。
+- 更新签名用组织共用的 Sparkle 密钥（规范 007），代码签名用组织共用的自签名证书。证书不换，辅助功能授权在更新后就能保留。
+- 只出 arm64 版本：macOS 27 不再支持 Intel 的 Mac。
+
+## 私有接口
+
+全部在运行时用 `dlsym` 取：找不到符号时只是对应的功能不能用，应用照常启动。系统升级后最先要检查这些。
+
+| 接口 | 用在哪 | 风险 |
+|---|---|---|
+| `CGSGetSymbolicHotKeyValue` / `CGSSetSymbolicHotKeyValue` / `CGSIsSymbolicHotKeyEnabled` / `CGSSetSymbolicHotKeyEnabled` | 触发调度中心、切换桌面、启动台等系统快捷键 | 苹果改快捷键编号时失效 |
+| `CGEventSetHIDEvent`、`IOHIDEventCreate*` | macOS 27 上伪造 Dock 滑动（切换桌面、调度中心、启动台） | 字段布局随系统变化 |
+| 手势事件的字段编号（类型 29，子类型、相位、缩放量等） | 模拟触控板滚动、捏合缩放、智能缩放、翻页 | 同上 |
+
+## 依赖和许可
+
+- 唯一的第三方依赖是 Sparkle（MIT）。
+- 本项目保留所有权利。Mac Mouse Fix 的代码没有复制，只参考了它记录的事件字段和时间参数；以后做 Dock 预览、菜单栏管理时，DockDoor、Ice 等 GPL 项目同样只能参考思路。
