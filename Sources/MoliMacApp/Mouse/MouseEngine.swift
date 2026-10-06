@@ -8,23 +8,35 @@ import MoliMacCore
 /// click cycle timers, so the state needs no locks. Other threads call in with
 /// `thread.perform`.
 final class MouseEngine: @unchecked Sendable {
+    /// What the main thread hands over whenever settings, permission or sleep change.
+    struct Configuration: Sendable {
+        var table = RemapTable([])
+        var scroll = ScrollSettings()
+        var screenHeight = 1000.0
+        var active = false
+    }
+
     private let thread: EventTapThread
+    private let scroll: ScrollEngine
     private var cycle = ClickCycle(table: RemapTable([]))
     private var tap: CFMachPort?
     private var tapSource: CFRunLoopSource?
     /// While the settings page captures a button, every event goes through untouched.
     private var bypass = false
 
-    init(thread: EventTapThread) {
+    init(thread: EventTapThread, clock: FrameClock) {
         self.thread = thread
+        scroll = ScrollEngine(clock: clock)
     }
 
     // MARK: - Control (on the tap thread)
 
     /// Installs or removes the tap. Removing it first ends a gesture in progress.
-    func configure(table: RemapTable, active: Bool) {
-        cycle.table = table
-        if active, !table.isEmpty {
+    func configure(_ configuration: Configuration) {
+        cycle.table = configuration.table
+        scroll.settings = configuration.scroll
+        scroll.screenHeight = configuration.screenHeight
+        if configuration.active {
             installTap()
         } else {
             removeTap()
@@ -64,6 +76,7 @@ final class MouseEngine: @unchecked Sendable {
 
     private func removeTap() {
         apply(cycle.cancel())
+        scroll.cancel()
         guard let tap else {
             return
         }
@@ -97,7 +110,7 @@ final class MouseEngine: @unchecked Sendable {
         case .otherMouseDown: buttonDown(event)
         case .otherMouseUp: buttonUp(event)
         case .otherMouseDragged: dragged(event)
-        case .scrollWheel: scrolled()
+        case .scrollWheel: scrolled(event)
         default: false
         }
         return swallow ? nil : pass
@@ -135,13 +148,14 @@ final class MouseEngine: @unchecked Sendable {
         return false
     }
 
-    private func scrolled() -> Bool {
-        guard !cycle.isIdle else {
-            return false
+    private func scrolled(_ event: CGEvent) -> Bool {
+        var buttonAction: MouseAction?
+        if !cycle.isIdle {
+            let (effects, action) = cycle.scroll()
+            apply(effects)
+            buttonAction = action
         }
-        let (effects, action) = cycle.scroll()
-        apply(effects)
-        return action != nil
+        return scroll.handle(event, buttonAction: buttonAction)
     }
 
     // MARK: - Effects
@@ -157,9 +171,10 @@ final class MouseEngine: @unchecked Sendable {
                 SyntheticEvents.postMouse(button: button, down: true)
             case let .scheduleTimers(token):
                 scheduleTimers(token: token)
-            case let .beginDrag(action), let .beginScroll(action):
+            case let .beginDrag(action):
                 Log.mouse.info("\(String(describing: action), privacy: .public) is not available yet")
-            case .endDrag, .endScroll:
+            case .beginScroll, .endScroll, .endDrag:
+                // Wheel ticks during a button scroll go to the scroll engine as they come.
                 break
             }
         }
