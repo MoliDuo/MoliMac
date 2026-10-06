@@ -56,6 +56,10 @@ final class MouseEngine: @unchecked Sendable {
     private var appUnderPointer = AppUnderPointerCache()
     private var tap: CFMachPort?
     private var tapSource: CFRunLoopSource?
+    /// Sees left and right clicks, only while autoscroll runs, so the click that
+    /// ends it can be taken. The main tap never touches those buttons.
+    private var autoscrollTap: CFMachPort?
+    private var autoscrollTapSource: CFRunLoopSource?
     /// While the settings page captures a button, every event goes through untouched.
     private var bypass = false
 
@@ -93,14 +97,49 @@ final class MouseEngine: @unchecked Sendable {
     }
 
     private func installTap() {
-        guard tap == nil, let runLoop = thread.runLoop else {
+        guard tap == nil else {
             return
         }
-        let types: [CGEventType] = [
-            .otherMouseDown, .otherMouseUp, .otherMouseDragged, .scrollWheel,
-            // Only to end autoscroll; otherwise they pass straight through.
-            .leftMouseDown, .rightMouseDown,
-        ]
+        guard let (tap, source) = makeTap([.otherMouseDown, .otherMouseUp, .otherMouseDragged, .scrollWheel]) else {
+            Log.mouse.error("could not create the mouse event tap")
+            return
+        }
+        self.tap = tap
+        tapSource = source
+        Log.mouse.info("mouse event tap on")
+    }
+
+    private func removeTap() {
+        apply(cycle.cancel())
+        scroll.cancel()
+        syncAutoscrollTap()
+        guard let tap else {
+            return
+        }
+        destroyTap(tap, source: tapSource)
+        self.tap = nil
+        tapSource = nil
+        Log.mouse.info("mouse event tap off")
+    }
+
+    /// Adds or removes the left and right click tap to match whether autoscroll runs.
+    private func syncAutoscrollTap() {
+        if scroll.isAutoscrolling, autoscrollTap == nil {
+            if let (tap, source) = makeTap([.leftMouseDown, .rightMouseDown]) {
+                autoscrollTap = tap
+                autoscrollTapSource = source
+            }
+        } else if !scroll.isAutoscrolling, let autoscrollTap {
+            destroyTap(autoscrollTap, source: autoscrollTapSource)
+            self.autoscrollTap = nil
+            autoscrollTapSource = nil
+        }
+    }
+
+    private func makeTap(_ types: [CGEventType]) -> (CFMachPort, CFRunLoopSource)? {
+        guard let runLoop = thread.runLoop else {
+            return nil
+        }
         let mask = types.reduce(CGEventMask(0)) { $0 | (1 << $1.rawValue) }
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
@@ -110,30 +149,22 @@ final class MouseEngine: @unchecked Sendable {
             callback: mouseEngineTapCallback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
-            Log.mouse.error("could not create the mouse event tap")
-            return
+            return nil
         }
-        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        guard let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
+            CFMachPortInvalidate(tap)
+            return nil
+        }
         CFRunLoopAddSource(runLoop, source, .commonModes)
-        self.tap = tap
-        tapSource = source
-        Log.mouse.info("mouse event tap on")
+        return (tap, source)
     }
 
-    private func removeTap() {
-        apply(cycle.cancel())
-        scroll.cancel()
-        guard let tap else {
-            return
-        }
+    private func destroyTap(_ tap: CFMachPort, source: CFRunLoopSource?) {
         CGEvent.tapEnable(tap: tap, enable: false)
-        if let tapSource, let runLoop = thread.runLoop {
-            CFRunLoopRemoveSource(runLoop, tapSource, .commonModes)
+        if let source, let runLoop = thread.runLoop {
+            CFRunLoopRemoveSource(runLoop, source, .commonModes)
         }
         CFMachPortInvalidate(tap)
-        self.tap = nil
-        tapSource = nil
-        Log.mouse.info("mouse event tap off")
     }
 
     // MARK: - Events
@@ -143,7 +174,7 @@ final class MouseEngine: @unchecked Sendable {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             // The system turns a tap off when a callback is slow or secure input
             // starts; turn it straight back on.
-            if let tap {
+            for tap in [tap, autoscrollTap].compactMap(\.self) {
                 CGEvent.tapEnable(tap: tap, enable: true)
             }
             Log.mouse.info("mouse event tap re-enabled after type \(type.rawValue)")
@@ -155,6 +186,8 @@ final class MouseEngine: @unchecked Sendable {
         if scroll.isAutoscrolling, [.leftMouseDown, .rightMouseDown, .otherMouseDown].contains(type) {
             // The click that ends autoscroll does nothing else, as on Windows.
             scroll.stopAutoscroll()
+            // Not from inside the callback of the tap being removed.
+            thread.perform { [self] in syncAutoscrollTap() }
             return nil
         }
         let swallow: Bool = switch type {
@@ -216,6 +249,7 @@ final class MouseEngine: @unchecked Sendable {
     private func scrolled(_ event: CGEvent) -> Bool {
         if scroll.isAutoscrolling {
             scroll.stopAutoscroll()
+            syncAutoscrollTap()
         }
         var buttonAction: MouseAction?
         if cycle.isIdle {
@@ -239,6 +273,7 @@ final class MouseEngine: @unchecked Sendable {
             switch effect {
             case .perform(.autoscroll):
                 scroll.toggleAutoscroll()
+                syncAutoscrollTap()
             case let .perform(action):
                 ActionPerformer.perform(action)
             case let .replayClick(button, count):
