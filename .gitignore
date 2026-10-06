@@ -1,0 +1,20 @@
+# Build output
+.build/
+.swiftpm/
+DerivedData/
+xcuserdata/
+*.xcodeproj/
+*.xcworkspace/
+/dist/
+
+# Secrets never go in the repo (MoliSpec 012)
+.env*
+!.env.example
+.dev.vars
+*.p12
+*.pem
+*.key
+*.keystore
+*.mobileprovision
+
+.DS_Store
