@@ -1,0 +1,17 @@
+name: MoliMac
+id: mac
+kind: desktop
+level: L1
+
+login:
+  mode: exempt # a local menu bar utility with no server and no account
+
+deploy:
+  platform: none
+
+data:
+  db: none
+
+release:
+  kind: client
+  mode: manual
