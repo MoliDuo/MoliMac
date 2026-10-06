@@ -15,7 +15,8 @@ public enum NavigationMethod: Equatable, Sendable {
     private static let leftArrow: UInt16 = 123
     private static let rightArrow: UInt16 = 124
 
-    private static let commandBrackets = NavigationMethod.keys(
+    /// ⌘[ and ⌘], which most of Apple's apps also accept for back and forward.
+    public static let commandBrackets = NavigationMethod.keys(
         back: KeyboardShortcut(keyCode: leftBracket, modifiers: [.command]),
         forward: KeyboardShortcut(keyCode: rightBracket, modifiers: [.command])
     )
@@ -70,6 +71,17 @@ public enum SymbolicHotKey: Int, Sendable {
         UInt16(rawValue + 400)
     }
 
+    /// What to post to trigger the shortcut, given its current system binding (nil
+    /// when it could not be read). A shortcut that is off or has no key is bound to
+    /// `unreachableKeyCode` first, which no keyboard can type, so the user's own
+    /// keys stay free and the binding never clashes with anything.
+    public func binding(toPost current: SymbolicHotKeyBinding?) -> (binding: SymbolicHotKeyBinding, rebind: Bool) {
+        if let current, current.isUsable {
+            return (current, false)
+        }
+        return (SymbolicHotKeyBinding(keyCode: unreachableKeyCode, modifierFlags: 0, isEnabled: true), true)
+    }
+
     public init?(action: MouseAction) {
         switch action {
         case .missionControl: self = .missionControl
@@ -82,5 +94,25 @@ public enum SymbolicHotKey: Int, Sendable {
         case .launchpad: self = .launchpad
         default: return nil
         }
+    }
+}
+
+/// A system shortcut's key as macOS stores it. Modifier flags use the CGEventFlags bits.
+public struct SymbolicHotKeyBinding: Equatable, Sendable {
+    /// The key code macOS stores for a shortcut that has no key.
+    public static let noKey: UInt16 = 0xFFFF
+
+    public var keyCode: UInt16
+    public var modifierFlags: UInt64
+    public var isEnabled: Bool
+
+    public init(keyCode: UInt16, modifierFlags: UInt64, isEnabled: Bool) {
+        self.keyCode = keyCode
+        self.modifierFlags = modifierFlags
+        self.isEnabled = isEnabled
+    }
+
+    public var isUsable: Bool {
+        isEnabled && keyCode != Self.noKey
     }
 }

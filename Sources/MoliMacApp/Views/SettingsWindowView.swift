@@ -3,6 +3,7 @@ import SwiftUI
 
 enum SidebarItem: String, CaseIterable, Identifiable {
     case general
+    case buttons
     case about
 
     var id: String {
@@ -12,6 +13,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .general: "通用"
+        case .buttons: "按键"
         case .about: "关于"
         }
     }
@@ -19,6 +21,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .general: "gearshape"
+        case .buttons: "computermouse"
         case .about: "info.circle"
         }
     }
@@ -33,6 +36,9 @@ struct SettingsWindowView: View {
             List(selection: sidebarSelection) {
                 Section {
                     sidebarRow(.general)
+                }
+                Section("鼠标") {
+                    sidebarRow(.buttons)
                 }
                 Section {
                     sidebarRow(.about)
@@ -76,6 +82,8 @@ struct SettingsWindowView: View {
         switch selection {
         case .general:
             GeneralPage(model: model)
+        case .buttons:
+            ButtonsPage(model: model)
         case .about:
             AboutPage(model: model)
         }

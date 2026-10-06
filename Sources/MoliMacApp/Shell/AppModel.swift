@@ -23,6 +23,7 @@ final class AppModel: ObservableObject {
     let store: SettingsStore
     let accessibility = AccessibilityTrust()
     let macMouseFix = MacMouseFixWatcher()
+    let mouse = MouseModule()
     let updateController: UpdateController?
 
     private var cancellables: Set<AnyCancellable> = []
@@ -53,10 +54,17 @@ final class AppModel: ObservableObject {
     func start() {
         accessibility.start()
         macMouseFix.start()
+        mouse.start()
+        Publishers.CombineLatest($settings.map(\.mouse).removeDuplicates(), accessibility.$isTrusted.removeDuplicates())
+            .sink { [weak self] mouse, isTrusted in
+                self?.mouse.update(settings: mouse, isTrusted: isTrusted)
+            }
+            .store(in: &cancellables)
         updateController?.start()
     }
 
     func stop() {
+        mouse.stop()
         accessibility.stop()
         macMouseFix.stop()
         updateController?.stop()
