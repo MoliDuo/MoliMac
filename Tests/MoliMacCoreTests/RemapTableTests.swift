@@ -96,3 +96,25 @@ final class NavigationTests: XCTestCase {
         XCTAssertNil(SymbolicHotKey(action: .back))
     }
 }
+
+final class SymbolicHotKeyTests: XCTestCase {
+    func testUsableBindingIsPostedAsIs() {
+        let missionControl = SymbolicHotKeyBinding(keyCode: 126, modifierFlags: 0x840000, isEnabled: true)
+        let result = SymbolicHotKey.missionControl.binding(toPost: missionControl)
+        XCTAssertEqual(result.binding, missionControl)
+        XCTAssertFalse(result.rebind)
+    }
+
+    func testDisabledUnboundOrUnreadableShortcutsMoveToTheUnreachableKey() {
+        let unreachable = SymbolicHotKeyBinding(keyCode: 560, modifierFlags: 0, isEnabled: true)
+        for current in [
+            SymbolicHotKeyBinding(keyCode: 126, modifierFlags: 0, isEnabled: false),
+            SymbolicHotKeyBinding(keyCode: SymbolicHotKeyBinding.noKey, modifierFlags: 0, isEnabled: true),
+            nil,
+        ] {
+            let result = SymbolicHotKey.launchpad.binding(toPost: current)
+            XCTAssertEqual(result.binding, unreachable)
+            XCTAssertTrue(result.rebind)
+        }
+    }
+}
