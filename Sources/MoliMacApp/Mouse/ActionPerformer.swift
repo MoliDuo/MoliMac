@@ -7,6 +7,11 @@ import MoliMacCore
 enum ActionPerformer {
     static func perform(_ action: MouseAction) {
         Log.actions.debug("perform \(String(describing: action), privacy: .public)")
+        if action == .lookUp, AppUnderPointer.bundleIdentifier() == "com.apple.finder" {
+            // Look Up does nothing useful on files; Quick Look (space) does.
+            SyntheticEvents.postKey(49, flags: [])
+            return
+        }
         if let hotKey = SymbolicHotKey(action: action) {
             SymbolicHotKeys.post(hotKey)
             return
@@ -21,21 +26,17 @@ enum ActionPerformer {
         case let .keyboardShortcut(shortcut):
             SyntheticEvents.post(shortcut)
         case .smartZoom:
-            // Needs the trackpad gesture events, which are not posted yet.
-            Log.actions.info("smart zoom is not available yet")
+            GestureEvents.postSmartZoom()
         default:
             Log.actions.error("not an instant action: \(String(describing: action), privacy: .public)")
         }
     }
 
     private static func navigate(forward: Bool) {
-        var method = NavigationMethod.forApp(bundleIdentifier: AppUnderPointer.bundleIdentifier())
-        if method == .swipe {
-            // The swipe gesture is not posted yet; Apple's apps also accept ⌘[ and ⌘].
-            method = .commandBrackets
-        }
-        switch method {
-        case .swipe, .mouseButtons:
+        switch NavigationMethod.forApp(bundleIdentifier: AppUnderPointer.bundleIdentifier()) {
+        case .swipe:
+            GestureEvents.postNavigationSwipe(back: !forward)
+        case .mouseButtons:
             SyntheticEvents.postClicks(button: forward ? 5 : 4, count: 1)
         case let .keys(back, forwardKeys):
             SyntheticEvents.post(forward ? forwardKeys : back)

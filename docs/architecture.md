@@ -36,6 +36,18 @@ MoliMac 是一个菜单栏应用（`LSUIElement`），所有模块都在同一�
 - `ScrollAnimator` 用 `HybridCurve` 把距离铺到各帧上，帧由 `FrameClock`（`CADisplayLink`，加在事件钩子线程的 run loop 上）驱动；空闲时暂停。
 - 模拟触控板时，动画的前段发成 began/changed/ended 的双指滚动，后段的阻力尾巴发成 momentum，并配上类型 29 的手势事件。
 
+## 按住拖动和按住滚动
+
+- **切换桌面与调度中心**（拖动）、**桌面与启动台**（滚动）：用系统快捷键实现，一次一个动作：横向每拖一段切一个桌面，往上拖开调度中心，往下拖开应用程序窗口；按住滚轮往上开启动台，往下显示桌面。没有照 Mac Mouse Fix 伪造 Dock 滑动手势：macOS 27 上要拼私有的 `IOHIDEvent`，格式没有公开，出错时无法察觉。代价是没有跟手的动画。
+- **拖动滚动与翻页**：鼠标移动变成带 phase 的双指滚动（内容跟着指针走），先锁定方向，松手后按速度生成惯性。横向滚到头时 Safari 等 App 会自己翻页。
+- **中键拖动**：发出中键按下，把后面的拖动事件改成中键的，松手时发中键抬起。
+- 拖动时用 `CGAssociateMouseAndMouseCursorPosition` 让指针停在原地；结束、取消、移除钩子时都会恢复。拖动中每 0.3 秒确认一次按键还按着，松开的事件丢了也会结束拖动。
+
+## 已知限制
+
+- 「查询与快速查看」：在 Finder 里发空格（快速查看），其他 App 用系统快捷键「查询」。Safari 和「邮件」里查询可能不灵。
+- 三指翻页、捏合缩放、智能缩放靠未公开的事件字段，系统升级后要先检查这几个。
+
 ## 设置
 
 - 存在 `~/Library/Application Support/MoliMac/settings.json`，带 `schemaVersion`（规范 009）。
@@ -57,8 +69,7 @@ MoliMac 是一个菜单栏应用（`LSUIElement`），所有模块都在同一�
 | 接口 | 用在哪 | 风险 |
 |---|---|---|
 | `CGSGetSymbolicHotKeyValue` / `CGSSetSymbolicHotKeyValue` / `CGSIsSymbolicHotKeyEnabled` / `CGSSetSymbolicHotKeyEnabled` | 触发调度中心、切换桌面、启动台等系统快捷键 | 苹果改快捷键编号时失效 |
-| `CGEventSetHIDEvent`、`IOHIDEventCreate*` | macOS 27 上伪造 Dock 滑动（切换桌面、调度中心、启动台） | 字段布局随系统变化 |
-| 手势事件的字段编号（类型 29，子类型、相位、缩放量等） | 模拟触控板滚动、捏合缩放、智能缩放、翻页 | 同上 |
+| 手势事件的字段编号（类型 29；110 子类型、113 缩放量、115 滑动方向、124 滑动量、132 相位） | 模拟触控板滚动的配套事件、捏合缩放、智能缩放、三指翻页 | 苹果改字段时对应手势失效，其他功能不受影响 |
 
 ## 依赖和许可
 

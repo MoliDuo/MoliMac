@@ -18,6 +18,7 @@ final class MouseEngine: @unchecked Sendable {
 
     private let thread: EventTapThread
     private let scroll: ScrollEngine
+    private let drag: DragEngine
     private var cycle = ClickCycle(table: RemapTable([]))
     private var tap: CFMachPort?
     private var tapSource: CFRunLoopSource?
@@ -27,6 +28,7 @@ final class MouseEngine: @unchecked Sendable {
     init(thread: EventTapThread, clock: FrameClock) {
         self.thread = thread
         scroll = ScrollEngine(clock: clock)
+        drag = DragEngine(scroll: scroll)
     }
 
     // MARK: - Control (on the tap thread)
@@ -139,13 +141,11 @@ final class MouseEngine: @unchecked Sendable {
         guard cycle.activeButton == Self.button(of: event) else {
             return false
         }
-        let (effects, _) = cycle.move(
-            dx: event.getDoubleValueField(.mouseEventDeltaX),
-            dy: event.getDoubleValueField(.mouseEventDeltaY)
-        )
+        let dx = event.getDoubleValueField(.mouseEventDeltaX)
+        let dy = event.getDoubleValueField(.mouseEventDeltaY)
+        let (effects, consumed) = cycle.move(dx: dx, dy: dy)
         apply(effects)
-        // Drag actions are not implemented yet, so the pointer keeps moving.
-        return false
+        return consumed && drag.move(event, dx: dx, dy: dy)
     }
 
     private func scrolled(_ event: CGEvent) -> Bool {
@@ -172,10 +172,31 @@ final class MouseEngine: @unchecked Sendable {
             case let .scheduleTimers(token):
                 scheduleTimers(token: token)
             case let .beginDrag(action):
-                Log.mouse.info("\(String(describing: action), privacy: .public) is not available yet")
-            case .beginScroll, .endScroll, .endDrag:
+                drag.begin(action)
+                watchDragButton()
+            case .endDrag:
+                drag.end()
+            case .beginScroll, .endScroll:
                 // Wheel ticks during a button scroll go to the scroll engine as they come.
                 break
+            }
+        }
+    }
+
+    /// Ends a drag whose button is no longer down. The release can get lost (for
+    /// example while the system had the tap turned off), and a drag left running
+    /// would keep the pointer frozen.
+    private func watchDragButton() {
+        thread.perform(after: 0.3) { [self] in
+            guard cycle.isDragging, let button = cycle.activeButton else {
+                return
+            }
+            let cgButton = CGMouseButton(rawValue: UInt32(button - 1)) ?? .center
+            if CGEventSource.buttonState(.hidSystemState, button: cgButton) {
+                watchDragButton()
+            } else {
+                Log.mouse.info("drag button is up without a release event; ending the drag")
+                apply(cycle.cancel())
             }
         }
     }

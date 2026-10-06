@@ -21,6 +21,8 @@ final class ScrollEngine {
     private var animator = ScrollAnimator()
     private var animatingHorizontally = false
     private var zoomAnimator = ScrollAnimator()
+    private var momentum = MomentumAnimator()
+    private var momentumHorizontally = false
     private let output = ScrollOutput()
     private let zoom = ZoomOutput()
 
@@ -64,6 +66,8 @@ final class ScrollEngine {
     func cancel() {
         animator.stop()
         zoomAnimator.stop()
+        momentum.stop()
+        output.forcesPhases = false
         output.end()
         zoom.end()
         clock.stop()
@@ -101,10 +105,41 @@ final class ScrollEngine {
         )
     }
 
+    // MARK: - Drag scrolling
+
+    /// Starts a two-finger scroll driven by mouse movement instead of the wheel.
+    func beginDragScroll() {
+        animator.stop()
+        momentum.stop()
+        output.end()
+        output.flags = SyntheticEvents.currentFlags
+        // Always with phases, so apps rubber-band and navigate like on a trackpad.
+        output.forcesPhases = true
+    }
+
+    func dragScroll(dx: Double, dy: Double) {
+        output.scroll(dx: dx, dy: dy, phase: .gesture)
+    }
+
+    func endDragScroll(velocity: Double, horizontal: Bool, now: Double) {
+        momentum.start(velocity: velocity, curve: DragScroll.momentum, now: now)
+        if momentum.isRunning {
+            momentumHorizontally = horizontal
+            clock.start()
+        } else {
+            output.end()
+            output.forcesPhases = false
+        }
+    }
+
     // MARK: - Motion
 
     private func scroll(dx: Double, dy: Double, feel: ScrollFeel?, now: Double) {
         let horizontal = dx != 0
+        if momentum.isRunning {
+            momentum.stop()
+            output.forcesPhases = false
+        }
         guard let feel else {
             animator.stop()
             output.scroll(dx: dx, dy: dy, phase: .gesture)
@@ -147,7 +182,18 @@ final class ScrollEngine {
                 zoom.end()
             }
         }
-        if !animator.isRunning, !zoomAnimator.isRunning {
+        if let frame = momentum.frame(now: now) {
+            if momentumHorizontally {
+                output.scroll(dx: frame.delta, dy: 0, phase: .momentum)
+            } else {
+                output.scroll(dx: 0, dy: frame.delta, phase: .momentum)
+            }
+            if frame.finished {
+                output.end()
+                output.forcesPhases = false
+            }
+        }
+        if !animator.isRunning, !zoomAnimator.isRunning, !momentum.isRunning {
             clock.stop()
         }
     }
@@ -163,6 +209,8 @@ final class ScrollOutput {
     }
 
     var simulatesTrackpad = true
+    /// Posts with phases even when trackpad simulation is off (for drag scrolling).
+    var forcesPhases = false
     var flags: CGEventFlags = []
 
     private var state = State.idle
@@ -173,7 +221,7 @@ final class ScrollOutput {
         let ix = x.take(dx)
         let iy = y.take(dy)
         let moved = ix != 0 || iy != 0
-        guard simulatesTrackpad else {
+        guard simulatesTrackpad || forcesPhases else {
             if moved {
                 GestureEvents.postScroll(dx: ix, dy: iy, phase: .none, momentum: .none, flags: flags)
             }
