@@ -4,11 +4,17 @@ import SwiftUI
 
 struct ButtonsPage: View {
     @ObservedObject var model: AppModel
+    /// The list to edit; the global one when nil.
+    var list: Binding<[ButtonMapping]>?
     @State private var captureMessage: String?
     @State private var recording: RecordingTarget?
 
+    private var buttons: Binding<[ButtonMapping]> {
+        list ?? $model.settings.mouse.buttons
+    }
+
     private var mappings: [ButtonMapping] {
-        model.settings.mouse.buttons
+        buttons.wrappedValue
     }
 
     var body: some View {
@@ -44,7 +50,7 @@ struct ButtonsPage: View {
                     ButtonList.setAction(
                         .keyboardShortcut(shortcut),
                         for: target.trigger,
-                        in: &model.settings.mouse.buttons
+                        in: &buttons.wrappedValue
                     )
                 }
                 recording = nil
@@ -83,7 +89,7 @@ struct ButtonsPage: View {
         let name = ButtonName.title(button)
         if !RemapTable.remappableButtons.contains(button) {
             captureMessage = name + "不能改。"
-        } else if ButtonList.addButton(button, to: &model.settings.mouse.buttons) {
+        } else if ButtonList.addButton(button, to: &buttons.wrappedValue) {
             captureMessage = "已添加" + name + "，在下面选择它的动作。"
         } else {
             captureMessage = name + "已经在下面了。"
@@ -100,7 +106,7 @@ struct ButtonsPage: View {
             Menu {
                 ForEach(unused, id: \.self) { trigger in
                     Button(trigger.title) {
-                        ButtonList.add(trigger, to: &model.settings.mouse.buttons)
+                        ButtonList.add(trigger, to: &buttons.wrappedValue)
                     }
                 }
             } label: {
@@ -136,7 +142,7 @@ struct ButtonsPage: View {
                 }
 
                 Button {
-                    ButtonList.remove(trigger, from: &model.settings.mouse.buttons)
+                    ButtonList.remove(trigger, from: &buttons.wrappedValue)
                 } label: {
                     Image(systemName: "minus.circle")
                 }
@@ -149,8 +155,8 @@ struct ButtonsPage: View {
 
     private func actionBinding(for trigger: Trigger) -> Binding<MouseAction> {
         Binding(
-            get: { model.settings.mouse.buttons.first { $0.trigger == trigger }?.action ?? .none },
-            set: { ButtonList.setAction($0, for: trigger, in: &model.settings.mouse.buttons) }
+            get: { buttons.wrappedValue.first { $0.trigger == trigger }?.action ?? .none },
+            set: { ButtonList.setAction($0, for: trigger, in: &buttons.wrappedValue) }
         )
     }
 
@@ -161,7 +167,7 @@ struct ButtonsPage: View {
         alert.addButton(withTitle: "恢复默认")
         alert.addButton(withTitle: "取消")
         if alert.runModal() == .alertFirstButtonReturn {
-            model.settings.mouse.buttons = MouseSettings.defaultButtons
+            buttons.wrappedValue = MouseSettings.defaultButtons
             captureMessage = nil
         }
     }

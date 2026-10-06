@@ -44,6 +44,23 @@ enum ActionPerformer {
     }
 }
 
+/// `AppUnderPointer` with the answer kept for a moment, since it is asked on every
+/// wheel tick and listing windows takes a millisecond or two.
+struct AppUnderPointerCache {
+    private static let lifetime = 0.3
+    private var time = -Double.infinity
+    private var value: String?
+
+    mutating func bundleIdentifier() -> String? {
+        let now = ProcessInfo.processInfo.systemUptime
+        if now - time > Self.lifetime {
+            value = AppUnderPointer.bundleIdentifier()
+            time = now
+        }
+        return value
+    }
+}
+
 /// The app that owns the window under the pointer, which is the one the user means
 /// even when another app is in front.
 enum AppUnderPointer {

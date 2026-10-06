@@ -25,12 +25,19 @@ final class ScrollEngine {
     private var momentumHorizontally = false
     private let output = ScrollOutput()
     private let zoom = ZoomOutput()
+    private var autoscrollStart: CGPoint?
+    private var lastAutoscrollFrame: Double?
+    private let autoscrollOutput = ScrollOutput()
+
+    /// Told the start point when autoscroll begins and nil when it ends.
+    var onAutoscrollChange: (@Sendable (CGPoint?) -> Void)?
 
     /// Zoom amounts are animated as if they were pixels, scaled by this.
     private static let zoomScale = 1000.0
 
     init(clock: FrameClock) {
         self.clock = clock
+        autoscrollOutput.simulatesTrackpad = false
         clock.onFrame = { [weak self] now in
             self?.frame(now: now)
         }
@@ -64,6 +71,7 @@ final class ScrollEngine {
 
     /// Stops all motion, for example when the tap is removed.
     func cancel() {
+        stopAutoscroll()
         animator.stop()
         zoomAnimator.stop()
         momentum.stop()
@@ -132,6 +140,42 @@ final class ScrollEngine {
         }
     }
 
+    // MARK: - Autoscroll
+
+    var isAutoscrolling: Bool {
+        autoscrollStart != nil
+    }
+
+    func toggleAutoscroll() {
+        if isAutoscrolling {
+            stopAutoscroll()
+            return
+        }
+        let start = CGEvent(source: nil)?.location ?? .zero
+        autoscrollStart = start
+        lastAutoscrollFrame = nil
+        autoscrollOutput.flags = SyntheticEvents.currentFlags
+        clock.start()
+        onAutoscrollChange?(start)
+    }
+
+    func stopAutoscroll() {
+        guard isAutoscrolling else { return }
+        autoscrollStart = nil
+        autoscrollOutput.end()
+        onAutoscrollChange?(nil)
+    }
+
+    private func autoscrollFrame(now: Double) {
+        guard let start = autoscrollStart else { return }
+        let elapsed = lastAutoscrollFrame.map { min(now - $0, 0.05) } ?? 0
+        lastAutoscrollFrame = now
+        let pointer = CGEvent(source: nil)?.location ?? start
+        let dx = Autoscroll.velocity(offset: pointer.x - start.x) * elapsed
+        let dy = Autoscroll.velocity(offset: pointer.y - start.y) * elapsed
+        autoscrollOutput.scroll(dx: dx, dy: dy, phase: .gesture)
+    }
+
     // MARK: - Motion
 
     private func scroll(dx: Double, dy: Double, feel: ScrollFeel?, now: Double) {
@@ -193,7 +237,8 @@ final class ScrollEngine {
                 output.forcesPhases = false
             }
         }
-        if !animator.isRunning, !zoomAnimator.isRunning, !momentum.isRunning {
+        autoscrollFrame(now: now)
+        if !animator.isRunning, !zoomAnimator.isRunning, !momentum.isRunning, !isAutoscrolling {
             clock.stop()
         }
     }

@@ -43,6 +43,12 @@ MoliMac 是一个菜单栏应用（`LSUIElement`），所有模块都在同一�
 - **中键拖动**：发出中键按下，把后面的拖动事件改成中键的，松手时发中键抬起。
 - 拖动时用 `CGAssociateMouseAndMouseCursorPosition` 让指针停在原地；结束、取消、移除钩子时都会恢复。拖动中每 0.3 秒确认一次按键还按着，松开的事件丢了也会结束拖动。
 
+## 按 App 设置和扩展功能
+
+- 设置里的 `mouse.apps` 是各 App 的覆盖项，每部分为空就跟随全局；`mouse.excludedApps` 是停用的 App。Core 的 `MouseSettings.profile(for:)` 合成某个 App 实际生效的设置，钩子里按住按键和滚第一格时按指针下面的 App 取用（结果缓存 0.3 秒）。
+- **指针**（`PointerController`）：改鼠标设备的 HID 属性，改之前记下原值；设置清空、模块关闭、退出时写回。每 3 秒补一次，新接上的鼠标也会生效。触控板不改。
+- **自动滚动**：一个动作，可以绑到任何单击或按住上。开始后在起点显示标记，每帧按指针离起点的距离滚动（起点附近 12 像素不动），按任意鼠标键或滚轮结束，结束的那一下不做别的。
+
 ## 已知限制
 
 - 「查询与快速查看」：在 Finder 里发空格（快速查看），其他 App 用系统快捷键「查询」。Safari 和「邮件」里查询可能不灵。
@@ -69,6 +75,7 @@ MoliMac 是一个菜单栏应用（`LSUIElement`），所有模块都在同一�
 | 接口 | 用在哪 | 风险 |
 |---|---|---|
 | `CGSGetSymbolicHotKeyValue` / `CGSSetSymbolicHotKeyValue` / `CGSIsSymbolicHotKeyEnabled` / `CGSSetSymbolicHotKeyEnabled` | 触发调度中心、切换桌面、启动台等系统快捷键 | 苹果改快捷键编号时失效 |
+| `IOHIDEventSystemClientCreate` | 指针加速和速度：用它改鼠标的 `HIDUseLinearScalingMouseAcceleration`、`HIDPointerResolution`（取不到时退回公开的 simple client，可能改不了） | 系统可能限制改设备属性 |
 | 手势事件的字段编号（类型 29；110 子类型、113 缩放量、115 滑动方向、124 滑动量、132 相位） | 模拟触控板滚动的配套事件、捏合缩放、智能缩放、三指翻页 | 苹果改字段时对应手势失效，其他功能不受影响 |
 
 ## 依赖和许可
