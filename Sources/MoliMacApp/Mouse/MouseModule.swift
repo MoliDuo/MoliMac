@@ -10,6 +10,8 @@ import MoliMacCore
 final class MouseModule {
     private let thread = EventTapThread()
     private let engine: MouseEngine
+    private let pointer = PointerController()
+    private let autoscrollIndicator = AutoscrollIndicator()
     private var settings = MouseSettings()
     private var isTrusted = false
     private var isAwake = true
@@ -18,6 +20,17 @@ final class MouseModule {
     init() {
         thread.startAndWait()
         engine = MouseEngine(thread: thread, clock: FrameClock(thread: thread))
+        let engine = engine
+        let indicator = UncheckedBox(autoscrollIndicator)
+        thread.perform {
+            engine.setAutoscrollObserver { point in
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated {
+                        indicator.value.show(at: point)
+                    }
+                }
+            }
+        }
     }
 
     func start() {
@@ -39,6 +52,7 @@ final class MouseModule {
     func stop() {
         observers.forEach(NSWorkspace.shared.notificationCenter.removeObserver)
         observers = []
+        pointer.restoreAll()
         let engine = engine
         let done = DispatchSemaphore(value: 0)
         thread.perform {
@@ -64,11 +78,12 @@ final class MouseModule {
     }
 
     private func apply() {
+        let active = settings.enabled && isTrusted && isAwake
+        pointer.update(settings.pointer, active: settings.enabled && isAwake)
         let configuration = MouseEngine.Configuration(
-            table: RemapTable(settings.buttons),
-            scroll: settings.scroll,
+            settings: settings,
             screenHeight: Double(NSScreen.main?.frame.height ?? 1000),
-            active: settings.enabled && isTrusted && isAwake
+            active: active
         )
         let engine = engine
         thread.perform {

@@ -17,6 +17,7 @@ extension MouseAction {
         case .forward: "前进"
         case .smartZoom: "智能缩放"
         case .middleClick: "中键点击"
+        case .autoscroll: "自动滚动"
         case let .keyboardShortcut(shortcut): "快捷键 " + shortcut.title
         case .dragSpacesAndMissionControl: "切换桌面与调度中心"
         case .dragScrollAndNavigate: "拖动滚动与翻页"

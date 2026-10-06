@@ -18,6 +18,8 @@ public enum MouseAction: Hashable, Sendable {
     case forward
     case smartZoom
     case middleClick
+    /// Windows-style: the page scrolls towards the pointer until the next click.
+    case autoscroll
     case keyboardShortcut(KeyboardShortcut)
 
     // Driven by mouse movement while the button is held.
@@ -57,7 +59,7 @@ public enum MouseAction: Hashable, Sendable {
         switch kind {
         case .click, .hold:
             [
-                .lookUp, .smartZoom, .middleClick, .back, .forward,
+                .lookUp, .smartZoom, .middleClick, .autoscroll, .back, .forward,
                 .missionControl, .appExpose, .showDesktop, .launchpad,
                 .spaceLeft, .spaceRight, .spotlight,
             ]
@@ -83,6 +85,7 @@ public enum MouseAction: Hashable, Sendable {
         case .forward: "forward"
         case .smartZoom: "smartZoom"
         case .middleClick: "middleClick"
+        case .autoscroll: "autoscroll"
         case .keyboardShortcut: "keyboardShortcut"
         case .dragSpacesAndMissionControl: "dragSpacesAndMissionControl"
         case .dragScrollAndNavigate: "dragScrollAndNavigate"
@@ -98,7 +101,7 @@ public enum MouseAction: Hashable, Sendable {
 
     private static let simpleCases: [MouseAction] = [
         .none, .lookUp, .missionControl, .appExpose, .showDesktop, .launchpad,
-        .spaceLeft, .spaceRight, .spotlight, .back, .forward, .smartZoom, .middleClick,
+        .spaceLeft, .spaceRight, .spotlight, .back, .forward, .smartZoom, .middleClick, .autoscroll,
         .dragSpacesAndMissionControl, .dragScrollAndNavigate, .dragMiddleButton,
         .scrollDesktopAndLaunchpad, .scrollZoom, .scrollHorizontal, .scrollSwift, .scrollPrecise,
     ]

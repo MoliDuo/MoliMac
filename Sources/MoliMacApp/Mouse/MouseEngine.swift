@@ -10,16 +10,50 @@ import MoliMacCore
 final class MouseEngine: @unchecked Sendable {
     /// What the main thread hands over whenever settings, permission or sleep change.
     struct Configuration: Sendable {
-        var table = RemapTable([])
-        var scroll = ScrollSettings()
+        var global = Profile()
+        /// Profiles for apps with settings of their own, by bundle identifier.
+        var apps: [String: Profile] = [:]
         var screenHeight = 1000.0
         var active = false
+
+        init() {}
+
+        init(settings: MouseSettings, screenHeight: Double, active: Bool) {
+            global = Profile(settings.globalProfile)
+            let ids = Set(settings.excludedApps + settings.apps.map(\.bundleIdentifier))
+            for id in ids {
+                apps[id] = Profile(settings.profile(for: id))
+            }
+            self.screenHeight = screenHeight
+            self.active = active
+        }
+
+        func profile(for bundleIdentifier: String?) -> Profile {
+            bundleIdentifier.flatMap { apps[$0] } ?? global
+        }
+    }
+
+    /// A `MouseProfile` with the lookup table built once.
+    struct Profile: Sendable {
+        var enabled = true
+        var table = RemapTable([])
+        var scroll = ScrollSettings()
+
+        init() {}
+
+        init(_ profile: MouseProfile) {
+            enabled = profile.enabled
+            table = RemapTable(profile.buttons)
+            scroll = profile.scroll
+        }
     }
 
     private let thread: EventTapThread
     private let scroll: ScrollEngine
     private let drag: DragEngine
     private var cycle = ClickCycle(table: RemapTable([]))
+    private var configuration = Configuration()
+    private var appUnderPointer = AppUnderPointerCache()
     private var tap: CFMachPort?
     private var tapSource: CFRunLoopSource?
     /// While the settings page captures a button, every event goes through untouched.
@@ -35,14 +69,20 @@ final class MouseEngine: @unchecked Sendable {
 
     /// Installs or removes the tap. Removing it first ends a gesture in progress.
     func configure(_ configuration: Configuration) {
-        cycle.table = configuration.table
-        scroll.settings = configuration.scroll
+        self.configuration = configuration
+        cycle.table = configuration.global.table
+        scroll.settings = configuration.global.scroll
         scroll.screenHeight = configuration.screenHeight
         if configuration.active {
             installTap()
         } else {
             removeTap()
         }
+    }
+
+    /// Called with the start point in screen coordinates, or nil when autoscroll ends.
+    func setAutoscrollObserver(_ observer: @escaping @Sendable (CGPoint?) -> Void) {
+        scroll.onAutoscrollChange = observer
     }
 
     func setBypass(_ bypass: Bool) {
@@ -56,7 +96,11 @@ final class MouseEngine: @unchecked Sendable {
         guard tap == nil, let runLoop = thread.runLoop else {
             return
         }
-        let types: [CGEventType] = [.otherMouseDown, .otherMouseUp, .otherMouseDragged, .scrollWheel]
+        let types: [CGEventType] = [
+            .otherMouseDown, .otherMouseUp, .otherMouseDragged, .scrollWheel,
+            // Only to end autoscroll; otherwise they pass straight through.
+            .leftMouseDown, .rightMouseDown,
+        ]
         let mask = types.reduce(CGEventMask(0)) { $0 | (1 << $1.rawValue) }
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
@@ -108,6 +152,11 @@ final class MouseEngine: @unchecked Sendable {
         if bypass || SyntheticEvents.isSynthetic(event) {
             return pass
         }
+        if scroll.isAutoscrolling, [.leftMouseDown, .rightMouseDown, .otherMouseDown].contains(type) {
+            // The click that ends autoscroll does nothing else, as on Windows.
+            scroll.stopAutoscroll()
+            return nil
+        }
         let swallow: Bool = switch type {
         case .otherMouseDown: buttonDown(event)
         case .otherMouseUp: buttonUp(event)
@@ -122,8 +171,24 @@ final class MouseEngine: @unchecked Sendable {
         Int(event.getIntegerValueField(.mouseEventButtonNumber)) + 1
     }
 
+    /// The settings for the app under the pointer. Looked up only when some app has
+    /// settings of its own, and at most every few hundred milliseconds.
+    private func currentProfile() -> Profile {
+        guard !configuration.apps.isEmpty else {
+            return configuration.global
+        }
+        return configuration.profile(for: appUnderPointer.bundleIdentifier())
+    }
+
     private func buttonDown(_ event: CGEvent) -> Bool {
         let button = Self.button(of: event)
+        if cycle.isIdle {
+            let profile = currentProfile()
+            guard profile.enabled else {
+                return false
+            }
+            cycle.table = profile.table
+        }
         guard cycle.table.isRemapped(button: button) else {
             return false
         }
@@ -149,8 +214,17 @@ final class MouseEngine: @unchecked Sendable {
     }
 
     private func scrolled(_ event: CGEvent) -> Bool {
+        if scroll.isAutoscrolling {
+            scroll.stopAutoscroll()
+        }
         var buttonAction: MouseAction?
-        if !cycle.isIdle {
+        if cycle.isIdle {
+            let profile = currentProfile()
+            guard profile.enabled else {
+                return false
+            }
+            scroll.settings = profile.scroll
+        } else {
             let (effects, action) = cycle.scroll()
             apply(effects)
             buttonAction = action
@@ -163,6 +237,8 @@ final class MouseEngine: @unchecked Sendable {
     private func apply(_ effects: [ClickCycle.Effect]) {
         for effect in effects {
             switch effect {
+            case .perform(.autoscroll):
+                scroll.toggleAutoscroll()
             case let .perform(action):
                 ActionPerformer.perform(action)
             case let .replayClick(button, count):

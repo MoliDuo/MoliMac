@@ -5,6 +5,8 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     case general
     case buttons
     case scroll
+    case pointer
+    case apps
     case about
 
     var id: String {
@@ -16,6 +18,8 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         case .general: "通用"
         case .buttons: "按键"
         case .scroll: "滚动"
+        case .pointer: "指针"
+        case .apps: "App"
         case .about: "关于"
         }
     }
@@ -25,6 +29,8 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         case .general: "gearshape"
         case .buttons: "computermouse"
         case .scroll: "scroll"
+        case .pointer: "cursorarrow.motionlines"
+        case .apps: "square.grid.2x2"
         case .about: "info.circle"
         }
     }
@@ -43,6 +49,8 @@ struct SettingsWindowView: View {
                 Section("鼠标") {
                     sidebarRow(.buttons)
                     sidebarRow(.scroll)
+                    sidebarRow(.pointer)
+                    sidebarRow(.apps)
                 }
                 Section {
                     sidebarRow(.about)
@@ -90,6 +98,10 @@ struct SettingsWindowView: View {
             ButtonsPage(model: model)
         case .scroll:
             ScrollPage(model: model)
+        case .pointer:
+            PointerPage(model: model)
+        case .apps:
+            AppsPage(model: model)
         case .about:
             AboutPage(model: model)
         }
