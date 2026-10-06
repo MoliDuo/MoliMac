@@ -35,6 +35,7 @@ MoliMac 是一个菜单栏应用（`LSUIElement`），所有模块都在同一�
 - 每一格交给 Core 的 `ScrollPlanner`：按滚轮转速算距离（`ScrollAcceleration`），按住的修饰键或按住的鼠标按键决定模式（横向、缩放、快速、精确），用到的修饰键从发出的事件里去掉。
 - `ScrollAnimator` 用 `HybridCurve` 把距离铺到各帧上，帧由 `FrameClock`（`CADisplayLink`，加在事件钩子线程的 run loop 上）驱动；空闲时暂停。
 - 模拟触控板时，动画的前段发成 began/changed/ended 的双指滚动，后段的阻力尾巴发成 momentum，并配上类型 29 的手势事件。
+- 滚动视图看到手势开始后，要等到结束才会回弹。手势超过 0.5 秒没有更新又没收到结束时，由看门狗补发结束，内容不会卡在拉过头的位置。
 
 ## 按住拖动和按住滚动
 
