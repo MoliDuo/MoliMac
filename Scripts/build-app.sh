@@ -8,7 +8,8 @@
 #
 # Environment:
 #   CONFIGURATION  swift build configuration, default release
-#   SIGN_IDENTITY  signing identity, default "-" (ad-hoc); may be a SHA-1 fingerprint
+#   SIGN_IDENTITY  signing identity; may be a SHA-1 fingerprint. Defaults to the development
+#                  certificate from Scripts/setup-dev-signing.sh when it exists, else "-" (ad-hoc)
 #   SIGN_KEYCHAIN  look the identity up only in this keychain file
 
 set -euo pipefail
@@ -17,8 +18,17 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 CONFIGURATION="${CONFIGURATION:-release}"
-SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 SIGN_KEYCHAIN="${SIGN_KEYCHAIN:-}"
+
+# A fixed development certificate keeps the Accessibility grant across local builds.
+DEV_SIGNING_DIR="$HOME/.moli-dev-signing"
+if [ -z "${SIGN_IDENTITY:-}" ] && [ -f "$DEV_SIGNING_DIR/identity" ]; then
+    SIGN_IDENTITY="$(cat "$DEV_SIGNING_DIR/identity")"
+    SIGN_KEYCHAIN="$DEV_SIGNING_DIR/dev.keychain-db"
+    security unlock-keychain -p "$(cat "$DEV_SIGNING_DIR/keychain-password")" "$SIGN_KEYCHAIN"
+    echo "用开发证书签名"
+fi
+SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 
 cd "$ROOT_DIR"
 

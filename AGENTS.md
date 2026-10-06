@@ -47,8 +47,10 @@ Design: `docs/architecture.md`.
 - Code is built and tested on macOS 27 with Xcode 27 (Swift 6.2+). There is no Linux build.
 - Check (same as CI): `Scripts/check.sh` — SwiftFormat lint, SwiftLint, build with warnings as
   errors, unit tests. `Scripts/check.sh --fix` applies the formatter and the autocorrectable lint fixes.
-- Package locally: `Scripts/package-release.sh`, then `Scripts/verify-package.sh`. The app is ad-hoc
-  signed unless `SIGN_IDENTITY` is set; ad-hoc builds lose the Accessibility grant on every rebuild.
+- Package locally: `Scripts/package-release.sh`, then `Scripts/verify-package.sh`. Run
+  `Scripts/setup-dev-signing.sh` once per Mac: local builds are then signed with a fixed development
+  certificate kept in `~/.moli-dev-signing` (a standalone keychain file, never the login keychain), so the
+  Accessibility grant survives rebuilds. Without it builds are ad-hoc signed and lose the grant each time.
 - Run: open `.build/MoliMac.app`. Quit Mac Mouse Fix first, or both apps act on every event.
 - Logs: `log stream --predicate 'subsystem == "com.moliduo.mac"' --level debug`.
 - Release: bump `VERSION`, commit `chore(release): vX.Y.Z`, tag `vX.Y.Z`, push the tag.
