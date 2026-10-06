@@ -159,7 +159,7 @@ jobs:
           set -euo pipefail
           main_sha="$(gh api "repos/$GH_REPO/commits/main" --jq .sha)"
           if [ "$main_sha" != "$GITHUB_SHA" ]; then
-            echo "::error::main 已经到了 $main_sha，比 $GITHUB_REF_NAME 新。草稿保留，重新发版。"
+            echo "::error::main 已经到了 ${main_sha}，比 $GITHUB_REF_NAME 新。草稿保留，重新发版。"
             exit 1
           fi
 
@@ -179,12 +179,12 @@ jobs:
             sleep 6
           done
           grep -qF "sparkle:shortVersionString>$VERSION<" "$feed" \
-            || { echo "::error::线上更新源的版本不是 $VERSION。"; exit 1; }
+            || { echo "::error::线上更新源的版本不是 ${VERSION}。"; exit 1; }
           grep -qF "/download/$GITHUB_REF_NAME/" "$feed" \
-            || { echo "::error::线上更新源的下载地址没有指向 $GITHUB_REF_NAME。"; exit 1; }
+            || { echo "::error::线上更新源的下载地址没有指向 ${GITHUB_REF_NAME}。"; exit 1; }
           cmp -s "$feed" .build/dist/appcast.xml \
             || { echo "::error::线上更新源和刚签名的不一致。"; exit 1; }
           zip_url="$(sed -n 's|.*url="\([^"]*\.zip\)".*|\1|p' "$feed" | head -n 1)"
           code="$(curl -sL -o /dev/null -w '%{http_code}' "$zip_url")"
-          [ "$code" = "200" ] || { echo "::error::更新包下载失败（HTTP $code）：$zip_url"; exit 1; }
-          echo "::notice::已发布 Moli Mac $VERSION，线上更新源已核对。"
+          [ "$code" = "200" ] || { echo "::error::更新包下载失败（HTTP ${code}）：$zip_url"; exit 1; }
+          echo "::notice::已发布 Moli Mac ${VERSION}，线上更新源已核对。"

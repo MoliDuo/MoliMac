@@ -59,7 +59,7 @@ check_plist() {
     if [ "$actual" = "$expected" ]; then
         pass "$key = $expected"
     else
-        fail "$key：期望 ${expected}，实际 ${actual:-<空>}"
+        fail "${key}：期望 ${expected}，实际 ${actual:-<空>}"
     fi
 }
 

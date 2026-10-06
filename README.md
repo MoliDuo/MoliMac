@@ -43,7 +43,7 @@ Scripts/package-release.sh    # 打包 .build/MoliMac.app、DMG、ZIP
 Scripts/verify-package.sh     # 检查打出来的包
 ```
 
-本地包是临时签名，每次重新打包都要重新授权辅助功能。测试前先退出 Mac Mouse Fix。
+第一次在这台 Mac 上开发先运行 `Scripts/setup-dev-signing.sh`：它在 `~/.moli-dev-signing` 建一张开发证书（单独的钥匙串文件，不进登录钥匙串），之后本地包都用它签名，辅助功能只需授权一次。没有它就是临时签名，每次重新打包都要重新授权。测试前先退出 Mac Mouse Fix。
 
 目录：`Sources/MoliMacCore`（不依赖界面的逻辑：设置、按键手势的状态机、滚动曲线，全部有单元测试）、`Sources/MoliMacApp`（菜单栏、事件拦截、模拟事件、设置窗口）、`Config/`（图标、设计令牌、更新公钥）。设计说明见 [docs/architecture.md](docs/architecture.md)。
 
